@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.mujin.mapper.FileMapper">
+    <update id="increaseUsedStorage">
+        UPDATE sys_user
+        SET used_storage = used_storage + #{size}
+        WHERE id = #{userId}
+    </update>
+
+    <update id="updateFileName">
+        UPDATE sys_user_file
+        SET file_name = #{newName},
+        update_time = NOW()
+        WHERE id = #{id}
+        AND is_deleted = 0
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+    </update>
+
+    <update id="batchUpdateParentId">
+        UPDATE sys_user_file
+        SET parent_id = #{targetParentId},
+        update_time = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND is_deleted = 0
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+    </update>
+
+    <select id="selectSysFileById" resultType="com.mujin.domain.entity.SysFile">
+        SELECT
+            id,
+            file_identifier as fileIdentifier,
+            file_size as fileSize,
+            file_path as filePath
+        FROM sys_file
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectSysFileByIdentifier" resultType="com.mujin.domain.entity.SysFile">
+        SELECT
+            id,
+            file_identifier as fileIdentifier,
+            file_size as fileSize,
+            file_path as filePath
+        FROM sys_file
+        WHERE file_identifier = #{identifier}
+            LIMIT 1 </select>
+
+    <select id="selectFileList" resultType="com.mujin.domain.vo.FileVO">
+        SELECT
+        CONCAT('f_', uf.id) as id,
+        uf.file_name as name,
+        uf.is_dir as isDir,
+        uf.parent_id as parentId,
+        uf.update_time as updateTime,
+        f.file_size as size,
+        CASE
+        WHEN uf.is_dir = '1' THEN 'folder'
+        WHEN uf.file_name LIKE '%.jpg' OR uf.file_name LIKE '%.png' OR uf.file_name LIKE '%.jpeg' OR uf.file_name LIKE '%.gif' THEN 'image'
+        WHEN uf.file_name LIKE '%.mp4' OR uf.file_name LIKE '%.avi' OR uf.file_name LIKE '%.mov' THEN 'video'
+        WHEN uf.file_name LIKE '%.pdf' OR uf.file_name LIKE '%.doc%' OR uf.file_name LIKE '%.xls%' OR uf.file_name LIKE '%.ppt%' THEN 'doc'
+        WHEN uf.file_name LIKE '%.mp3' OR uf.file_name LIKE '%.wav' THEN 'audio'
+        ELSE 'other'
+        END as type
+        FROM sys_user_file uf
+        LEFT JOIN sys_file f ON uf.file_id = f.id
+        <where>
+            <if test="userId != null">
+                AND uf.user_id = #{userId}
+            </if>
+            AND uf.is_deleted = 0
+
+            <if test="category != null and category != '' and category != 'all'">
+                <choose>
+                    <when test="category == 'image'">
+                        AND (uf.file_name LIKE '%.jpg' OR uf.file_name LIKE '%.png' OR uf.file_name LIKE '%.jpeg' OR uf.file_name LIKE '%.gif')
+                    </when>
+                    <when test="category == 'video'">
+                        AND (uf.file_name LIKE '%.mp4' OR uf.file_name LIKE '%.avi' OR uf.file_name LIKE '%.mov')
+                    </when>
+                    <when test="category == 'doc'">
+                        AND (uf.file_name LIKE '%.pdf' OR uf.file_name LIKE '%.doc%' OR uf.file_name LIKE '%.xls%' OR uf.file_name LIKE '%.ppt%')
+                    </when>
+                    <when test="category == 'audio'">
+                        AND (uf.file_name LIKE '%.mp3' OR uf.file_name LIKE '%.wav')
+                    </when>
+                    <when test="category == 'other'">
+                        AND uf.is_dir = '0'
+                        AND uf.file_name NOT LIKE '%.jpg' AND uf.file_name NOT LIKE '%.png' AND uf.file_name NOT LIKE '%.jpeg' AND uf.file_name NOT LIKE '%.gif'
+                        AND uf.file_name NOT LIKE '%.mp4' AND uf.file_name NOT LIKE '%.avi' AND uf.file_name NOT LIKE '%.mov'
+                        AND uf.file_name NOT LIKE '%.pdf' AND uf.file_name NOT LIKE '%.doc%' AND uf.file_name NOT LIKE '%.xls%' AND uf.file_name NOT LIKE '%.ppt%'
+                        AND uf.file_name NOT LIKE '%.mp3' AND uf.file_name NOT LIKE '%.wav'
+                    </when>
+                </choose>
+            </if>
+
+            <if test="category == null or category == '' or category == 'all'">
+                <if test="parentId != null">AND uf.parent_id = #{parentId}</if>
+            </if>
+
+            <if test="keyword != null and keyword != ''">
+                AND uf.file_name LIKE CONCAT('%',#{keyword},'%')
+            </if>
+        </where>
+        ORDER BY uf.is_dir DESC, uf.update_time DESC
+    </select>
+
+    <select id="selectSysUserFileById" resultType="com.mujin.domain.entity.SysUserFile">
+        SELECT
+            id,
+            user_id as userId,
+            file_id as fileId,
+            parent_id as parentId,
+            file_name as fileName,
+            is_dir as isDir
+        FROM sys_user_file
+        WHERE id = #{id}
+          AND is_deleted = 0
+    </select>
+
+    <insert id="insertSysFile" parameterType="com.mujin.domain.entity.SysFile" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_file (file_identifier, file_size, file_path, create_time, update_time)
+        VALUES (#{fileIdentifier}, #{fileSize}, #{filePath}, NOW(), NOW())
+    </insert>
+
+    <insert id="insertSysUserFile" parameterType="com.mujin.domain.entity.SysUserFile" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_user_file (user_id, file_id, parent_id, file_name, is_dir, create_time, update_time)
+        VALUES (#{userId}, #{fileId}, #{parentId}, #{fileName}, #{isDir}, NOW(), NOW())
+    </insert>
+
+    <select id="selectRecycleList" resultType="com.mujin.domain.vo.RecycleVO">
+        SELECT
+            CONCAT('f_', uf.id) as id,
+            uf.file_name as name,
+            CASE
+                WHEN uf.is_dir = '1' THEN 'folder'
+                WHEN uf.file_name LIKE '%.zip' THEN 'zip'
+                WHEN uf.file_name LIKE '%.jpg' OR uf.file_name LIKE '%.png' THEN 'image'
+                ELSE 'other'
+                END as type,
+            f.file_size as size,
+            DATE_FORMAT(uf.update_time, '%Y-%m-%d %H:%i:%s') as deleteTime,
+            -- 核心逻辑：30减去已被删除的天数。如果在回收站待了超过30天，会出现负数，前端可标记为“即将自动清理”
+            GREATEST(0, 30 - DATEDIFF(NOW(), uf.update_time)) as daysLeft
+        FROM sys_user_file uf
+            LEFT JOIN sys_file f ON uf.file_id = f.id
+        WHERE uf.user_id = #{userId}
+          AND uf.is_deleted = 1
+          AND (
+            uf.parent_id = 'root'
+           OR uf.parent_id NOT IN (
+            SELECT CONCAT('f_', id) FROM sys_user_file WHERE user_id = #{userId} AND is_deleted = 1
+            )
+            )
+        ORDER BY uf.update_time DESC
+    </select>
+
+    <update id="updateFileStatus">
+        UPDATE sys_user_file
+        SET is_deleted = #{status},
+        update_time = NOW()
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+    </update>
+
+    <update id="decreaseUsedStorage">
+        UPDATE sys_user
+        SET used_storage = GREATEST(0, used_storage - #{size})
+        WHERE id = #{userId}
+    </update>
+
+    <select id="countByFileId" resultType="int">
+        SELECT COUNT(*) FROM sys_user_file WHERE file_id = #{fileId}
+    </select>
+
+    <select id="selectUserFilesByIds" resultType="com.mujin.domain.entity.SysUserFile">
+        SELECT id, user_id as userId, file_id as fileId, is_dir as isDir
+        FROM sys_user_file
+        <where>
+            <if test="userId != null">
+                AND user_id = #{userId}
+            </if>
+            AND id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </where>
+    </select>
+
+    <select id="selectAllDeletedIdsByUser" resultType="java.lang.Long">
+        SELECT id FROM sys_user_file WHERE user_id = #{userId} AND is_deleted = 1
+    </select>
+
+    <select id="selectFilesByParentIds" resultType="com.mujin.domain.entity.SysUserFile">
+        SELECT
+        id,
+        file_id as fileId,
+        is_dir as isDir,
+        parent_id as parentId
+        FROM sys_user_file
+        WHERE is_deleted = #{isDeleted}
+        AND parent_id IN
+        <foreach collection="parentIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+    </select>
+
+    <delete id="deleteUserFileById">
+        DELETE FROM sys_user_file WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteSysFileById">
+        DELETE FROM sys_file WHERE id = #{id}
+    </delete>
+
+</mapper>

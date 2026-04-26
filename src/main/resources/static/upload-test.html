@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>LabLink AI 终极全自动并发火力测试</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 50px; background: #1e1e1e; color: #fff; }
+        .box { background: #2d2d2d; padding: 30px; border-radius: 10px; width: 600px; margin: 0 auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .login-box { background: #3d3d3d; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #555; }
+        input, button { display: block; width: 100%; margin: 10px 0; padding: 10px; box-sizing: border-box; border-radius: 5px; border: none; }
+        input { background: #444; color: #fff; }
+        button { background: #0078d7; color: white; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #005a9e; }
+        .btn-fire { background: #d83b01; margin-top: 20px; }
+        .btn-fire:hover { background: #ea4a1f; }
+        #log { margin-top: 20px; background: #000; padding: 15px; height: 250px; overflow-y: auto; font-family: monospace; color: #0f0; }
+        .btn-logout { background: #666; margin-top: 10px; }
+        .btn-logout:hover { background: #444; }
+        .login-status { color: #0f0; font-weight: bold; margin-bottom: 10px; }
+        .login-status.unlogin { color: #f00; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>🚀 LabLink AI 终极全自动靶场</h2>
+    
+    <div class="login-box">
+        <h3 style="margin-top: 0;">🔐 1. 系统登录 (真实登录态)</h3>
+        <!-- 新增登录状态提示 -->
+        <div id="loginStatus" class="login-status unlogin">当前状态：未登录</div>
+        <input type="text" id="username" placeholder="用户名" value="admin" />
+        <input type="password" id="password" placeholder="密码" value="123456" />
+        <button onclick="autoLogin()">⚡ 一键登录</button>
+        <input type="text" id="token" placeholder="Token 将在这里自动生成..." readonly style="background: #222; color: #aaa;" />
+        <!-- 新增登出按钮 -->
+        <button class="btn-logout" onclick="logout()" style="display: none;">🚪 退出登录</button>
+    </div>
+
+    <label>🎯 2. 选一个大文件 (推荐 10MB - 100MB)：</label>
+    <input type="file" id="fileInput" />
+
+    <button class="btn-fire" onclick="startUpload()">🔥 3. 启动碎肉狂飙机制</button>
+
+    <div id="log">等待指令...</div>
+</div>
+
+<script>
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 每块 5MB
+    const TOKEN_KEY = "lablink_auth_token"; // Token 存储键名
+    const BASE_URL = "http://localhost:8080"; // 基础地址，统一管理
+
+    // 初始化：页面加载时自动恢复登录态
+    window.onload = function() {
+        const savedToken = localStorage.getItem(TOKEN_KEY);
+        if (savedToken) {
+            document.getElementById('token').value = savedToken;
+            updateLoginStatus(true); // 更新登录状态UI
+            logInfo("✅ 页面刷新，自动恢复登录态！");
+        }
+    }
+
+    function logInfo(msg) {
+        const logBox = document.getElementById('log');
+        logBox.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // 新增：更新登录状态UI
+    function updateLoginStatus(isLogin) {
+        const statusEl = document.getElementById('loginStatus');
+        const logoutBtn = document.querySelector('.btn-logout');
+        if (isLogin) {
+            statusEl.textContent = "当前状态：已登录";
+            statusEl.classList.remove('unlogin');
+            logoutBtn.style.display = "block";
+        } else {
+            statusEl.textContent = "当前状态：未登录";
+            statusEl.classList.add('unlogin');
+            logoutBtn.style.display = "none";
+            document.getElementById('token').value = "";
+        }
+    }
+
+    // 新增：通用请求函数（自动携带Token，统一处理异常）
+    async function request(url, options = {}) {
+        const token = localStorage.getItem(TOKEN_KEY);
+        // 统一设置请求头
+        options.headers = {
+            "Content-Type": options.headers?.["Content-Type"] || "application/json",
+            ...(token ? { "token": token } : {}), // 登录后自动带Token
+            ...options.headers
+        };
+        try {
+            const res = await fetch(`${BASE_URL}${url}`, options);
+            const data = await res.json();
+            // 统一处理后端返回的错误码（比如Token过期）
+            if (data.code === 401) {
+                logInfo("❌ Token过期或失效，请重新登录！");
+                logout(); // 自动登出
+                throw new Error("Token失效");
+            }
+            return data;
+        } catch (e) {
+            logInfo(`❌ 请求异常：${e.message}`);
+            throw e; // 抛出异常，让上层处理
+        }
+    }
+
+    // ⚡ 完善的登录方法（真实登录态）
+    async function autoLogin() {
+        const un = document.getElementById('username').value;
+        const pw = document.getElementById('password').value;
+        
+        if (!un || !pw) {
+            alert("用户名/密码不能为空！");
+            return;
+        }
+
+        logInfo("⏳ 正在请求登录接口...");
+
+        try {
+            const res = await request("/login", {
+                method: "POST",
+                body: JSON.stringify({ username: un, password: pw })
+            });
+
+            if (res.code === 200) {
+                const token = res.data.token;
+                // 1. 存入localStorage持久化
+                localStorage.setItem(TOKEN_KEY, token);
+                // 2. 显示到输入框
+                document.getElementById('token').value = token;
+                // 3. 更新登录状态UI
+                updateLoginStatus(true);
+                logInfo("✅ 登录成功！已建立真实登录态，随时可以开火！");
+            } else {
+                logInfo(`❌ 登录失败：${res.msg}`);
+            }
+        } catch (e) {
+            logInfo("❌ 登录请求报错，请检查服务是否启动/跨域配置！");
+        }
+    }
+
+    // 新增：登出功能（清除登录态）
+    function logout() {
+        localStorage.removeItem(TOKEN_KEY); // 清除Token
+        updateLoginStatus(false); // 更新UI
+        logInfo("🚪 已退出登录，登录态已清除！");
+    }
+
+    // 🔥 优化后的分片上传方法（使用通用请求函数）
+    async function startUpload() {
+        // 从localStorage获取Token（而非仅输入框），保证登录态有效性
+        const token = localStorage.getItem(TOKEN_KEY);
+        const file = document.getElementById('fileInput').files[0];
+
+        if (!token) { 
+            alert("请先完成登录！"); 
+            return; 
+        }
+        if (!file) { 
+            alert("请选择要上传的文件！"); 
+            return; 
+        }
+
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const identifier = "test-video-md5-" + new Date().getTime(); 
+        const fileName = file.name;
+
+        logInfo(`📦 文件：${fileName}，大小：${(file.size/1024/1024).toFixed(2)} MB`);
+        logInfo(`🔪 准备切成 ${totalChunks} 个分片并发射...`);
+
+        const uploadPromises = [];
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunkBlob = file.slice(start, end); 
+            const chunkNumber = i + 1;
+
+            const formData = new FormData();
+            formData.append("identifier", identifier);
+            formData.append("filename", fileName);
+            formData.append("chunkNumber", chunkNumber);
+            formData.append("totalChunks", totalChunks);
+            formData.append("file", chunkBlob);
+
+            logInfo(`⬆️ 发射分片 ${chunkNumber}/${totalChunks} ...`);
+
+            // 使用fetch原生请求（FormData不能用JSON头，单独处理）
+            const req = fetch(`${BASE_URL}/file/chunk`, {
+                method: "POST",
+                headers: { "token": token }, // 携带Token
+                body: formData
+            }).then(res => res.json()).then(res => {
+                if (res.code === 200) {
+                    logInfo(`✅ 分片 ${chunkNumber} 降落成功！`);
+                } else {
+                    logInfo(`❌ 分片 ${chunkNumber} 失败：${res.msg}`);
+                }
+            }).catch(e => logInfo(`❌ 分片 ${chunkNumber} 坠毁：${e.message}`));
+            
+            uploadPromises.push(req);
+        }
+
+        await Promise.all(uploadPromises);
+        logInfo("============== 所有碎肉已就位 ==============");
+
+        logInfo("🔄 正在下达缝合指令...");
+        // 合并请求（使用通用request函数）
+        const mergeRes = await request("/file/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                identifier,
+                fileName,
+                totalChunks
+            })
+        });
+
+        if (mergeRes.code === 200) {
+            logInfo(`🎉🎉 终极缝合成功！MinIO 文件名: <span style="color:yellow">${mergeRes.data}</span>`);
+        } else {
+            logInfo(`❌ 合并失败：${mergeRes.msg}`);
+        }
+    }
+</script>
+</body>
+</html>

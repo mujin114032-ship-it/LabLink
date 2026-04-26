@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.mujin.mapper.ShareMapper">
+    <delete id="batchDeleteShares">
+        DELETE FROM sys_share WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <select id="selectShareList" resultType="com.mujin.domain.vo.ShareVO">
+        SELECT
+        CONCAT('sh_', s.id) as id,
+        uf.file_name as name,
+        u.username as owner,
+        DATE_FORMAT(s.share_time, '%Y-%m-%d %H:%i:%s') as shareTime,
+        DATE_FORMAT(s.expire_time, '%Y-%m-%d') as expires,
+        f.file_size as size,
+        CASE
+        WHEN uf.is_dir = '1' THEN 'folder'
+        ELSE 'doc' -- 这里可以根据后缀名写更复杂的 CASE
+        END as type
+        FROM sys_share s
+        JOIN sys_user_file uf ON s.user_file_id = uf.id
+        JOIN sys_user u ON s.user_id = u.id
+        LEFT JOIN sys_file f ON uf.file_id = f.id
+        WHERE s.status = 0
+        AND (s.expire_time IS NULL OR s.expire_time > NOW())
+        <if test="keyword != null and keyword != ''">
+            AND uf.file_name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY s.share_time DESC
+    </select>
+
+    <select id="getOriginFileByShareId" resultType="com.mujin.domain.entity.SysUserFile">
+        SELECT uf.*
+        FROM sys_share s
+        JOIN sys_user_file uf ON s.user_file_id = uf.id
+        WHERE s.id = #{shareId} AND s.status = 0
+    </select>
+
+    <insert id="insertShare">
+        INSERT INTO sys_share (user_file_id, user_id, share_time, expire_time, status)
+        VALUES (#{userFileId}, #{userId}, NOW(), #{expireTime}, 0)
+    </insert>
+
+</mapper>
