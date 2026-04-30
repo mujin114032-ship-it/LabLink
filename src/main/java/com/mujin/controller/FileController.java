@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -135,6 +136,24 @@ public class FileController {
         FileDownloadUrlVO vo = fileService.getDownloadUrl(id, userId, role);
 
         return Result.success("获取下载链接成功", vo);
+    }
+
+    /**
+     * 批量下载文件
+     */
+    @OperationLog(module = "文件管理", type = "BATCH_DOWNLOAD", desc = "批量下载文件")
+    @RateLimit(key = "files:batch-download", type = RateLimitType.USER, limit = 20, windowSeconds = 60)
+    @PostMapping("/batch-download-url")
+    public Result<FileDownloadUrlVO> getBatchDownloadUrl(
+            @RequestBody BatchDownloadDTO dto,
+            HttpServletRequest request) {
+
+        Long userId = (Long) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+
+        FileDownloadUrlVO vo = fileService.getBatchDownloadUrl(dto.getIds(), userId, role);
+
+        return Result.success("批量下载链接生成成功", vo);
     }
 
     /**

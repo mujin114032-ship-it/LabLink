@@ -36,4 +36,6 @@ public interface FileService {
     String mergeChunks(FileMergeDTO dto, Long userId);
 
     FileVerifyVO verifyFile(FileVerifyDTO dto, Long userId);
+
+    FileDownloadUrlVO getBatchDownloadUrl(List<String> ids, Long userId, String role);
 }

@@ -36,13 +36,18 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static com.mujin.utils.FileHashUtils.calculateSha256;
 import static com.mujin.utils.FileNameUtils.generateObjectName;
+import static com.mujin.utils.FileNameUtils.buildUniqueZipEntryName;
 import static com.mujin.utils.UploadProgressUtils.calculateProgress;
 
 
@@ -75,6 +80,12 @@ public class FileServiceImpl implements FileService {
 
     @Autowired
     private StorageQuotaSupport storageQuotaSupport;
+
+    @Value("${lablink.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
+
+    @Value("${lablink.backend-url:http://localhost:8080}")
+    private String backendUrl;
 
     @Value("${minio.bucketName}")
     private String bucketName;
@@ -375,6 +386,168 @@ public class FileServiceImpl implements FileService {
     }
 
     /**
+     * 批量下载文件
+     * @param ids 文件 ID 列表
+     * @param userId 用户 ID
+     * @param role 用户角色
+     * @return 下载链接
+     */
+    @Override
+    public FileDownloadUrlVO getBatchDownloadUrl(List<String> ids, Long userId, String role) {
+        if (ids == null || ids.isEmpty()) {
+            throw new RuntimeException("请选择要下载的文件");
+        }
+
+        // 1. 解析 f_xxx -> 数字 ID
+        List<Long> numericIds = new ArrayList<>();
+
+        for (String id : ids) {
+            if (id != null && id.startsWith("f_")) {
+                try {
+                    numericIds.add(Long.valueOf(id.substring(2)));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        if (numericIds.isEmpty()) {
+            throw new RuntimeException("没有有效的文件 ID");
+        }
+
+        /*
+         * 权限规则与列表/删除/移动保持一致：
+         * STUDENT 只能操作自己的文件；
+         * MENTOR / ADMIN 可以操作指定范围文件。
+         */
+        Long userIdFilter = "STUDENT".equals(role) ? userId : null;
+
+        List<SysUserFile> userFiles = fileMapper.selectUserFilesByIds(numericIds, userIdFilter);
+
+        if (userFiles == null || userFiles.isEmpty()) {
+            throw new RuntimeException("文件不存在或权限不足");
+        }
+
+        // 2. 过滤文件夹，只打包普通文件
+        List<SysUserFile> filesToDownload = userFiles.stream()
+                .filter(item -> "0".equals(item.getIsDir()))
+                .filter(item -> item.getFileId() != null && item.getFileId() != 0)
+                .toList();
+
+        if (filesToDownload.isEmpty()) {
+            throw new RuntimeException("当前选择项中没有可下载的文件");
+        }
+
+        Path tempZipPath = null;
+        String zipObjectName = null;
+
+        try {
+            // 3. 创建本地临时 ZIP，避免把 ZIP 全部放进 JVM 内存
+            String zipFileName = "LabLinkAI_批量下载_" + System.currentTimeMillis() + ".zip";
+            tempZipPath = Files.createTempFile("lablink-batch-download-", ".zip");
+
+            try (ZipOutputStream zipOut = new ZipOutputStream(Files.newOutputStream(tempZipPath))) {
+                Set<String> usedEntryNames = new HashSet<>();
+
+                for (SysUserFile userFile : filesToDownload) {
+                    SysFile physicalFile = fileMapper.selectSysFileById(userFile.getFileId());
+
+                    if (physicalFile == null || physicalFile.getFilePath() == null) {
+                        log.warn("批量下载跳过物理文件缺失项，logicId={}, fileId={}",
+                                userFile.getId(), userFile.getFileId());
+                        continue;
+                    }
+
+                    String entryName = buildUniqueZipEntryName(userFile.getFileName(), usedEntryNames);
+
+                    zipOut.putNextEntry(new ZipEntry(entryName));
+
+                    try (InputStream inputStream = minioClient.getObject(
+                            GetObjectArgs.builder()
+                                    .bucket(bucketName)
+                                    .object(physicalFile.getFilePath())
+                                    .build()
+                    )) {
+                        inputStream.transferTo(zipOut);
+                    }
+
+                    zipOut.closeEntry();
+                }
+            }
+
+            if (Files.size(tempZipPath) == 0) {
+                throw new RuntimeException("没有可打包的文件");
+            }
+
+            // 4. 上传 ZIP 到 MinIO 临时目录
+            zipObjectName = "temp/batch-download/"
+                    + UUID.randomUUID().toString().replace("-", "")
+                    + ".zip";
+
+            try (InputStream zipInputStream = Files.newInputStream(tempZipPath)) {
+                minioClient.putObject(
+                        PutObjectArgs.builder()
+                                .bucket(bucketName)
+                                .object(zipObjectName)
+                                .stream(zipInputStream, Files.size(tempZipPath), -1)
+                                .contentType("application/zip")
+                                .build()
+                );
+            }
+
+            // 5. 生成 ZIP 预签名 URL，建议 10 分钟有效
+            int expireSeconds = 10 * 60;
+
+            String encodedFileName = URLEncoder
+                    .encode(zipFileName, StandardCharsets.UTF_8)
+                    .replaceAll("\\+", "%20");
+
+            Map<String, String> reqParams = new HashMap<>();
+            reqParams.put("response-content-type", "application/zip");
+            reqParams.put(
+                    "response-content-disposition",
+                    "attachment; filename*=UTF-8''" + encodedFileName
+            );
+
+            String url = minioClient.getPresignedObjectUrl(
+                    GetPresignedObjectUrlArgs.builder()
+                            .method(Method.GET)
+                            .bucket(bucketName)
+                            .object(zipObjectName)
+                            .expiry(expireSeconds, TimeUnit.SECONDS)
+                            .extraQueryParams(reqParams)
+                            .build()
+            );
+
+            return new FileDownloadUrlVO(url, zipFileName, expireSeconds);
+
+        } catch (RuntimeException e) {
+            // 如果临时 ZIP 已经上传但后续失败，尽量删掉 MinIO 临时对象
+            if (zipObjectName != null) {
+                minioFileSupport.deleteTempZipQuietly(zipObjectName);
+            }
+            throw e;
+
+        } catch (Exception e) {
+            if (zipObjectName != null) {
+                minioFileSupport.deleteTempZipQuietly(zipObjectName);
+            }
+
+            log.error("批量下载打包失败", e);
+            throw new RuntimeException("批量下载失败，请稍后重试");
+
+        } finally {
+            // 6. 删除本地临时 ZIP
+            if (tempZipPath != null) {
+                try {
+                    Files.deleteIfExists(tempZipPath);
+                } catch (Exception e) {
+                    log.warn("删除本地临时 ZIP 失败，path={}", tempZipPath, e);
+                }
+            }
+        }
+    }
+
+    /**
      * 批量移动文件/文件夹
      */
     @Transactional(rollbackFor = Exception.class)
@@ -538,7 +711,8 @@ public class FileServiceImpl implements FileService {
         // 返回链接
         ShareLinkVO vo = new ShareLinkVO();
         vo.setShareCode(shareCode);
-        vo.setShareUrl("http://lablinkai.com/s/" + shareCode);
+//        vo.setShareUrl(frontendUrl + "/s/" + shareCode);
+        vo.setShareUrl(backendUrl + "/share/public/direct/" + shareCode);
 
         return vo;
     }

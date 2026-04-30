@@ -100,4 +100,25 @@ public class MinioFileSupport {
 
         log.info("文件完整性校验通过，identifier={}, object={}", expectedIdentifier, finalObjectName);
     }
+
+    /**
+     * 删除批量下载产生的 MinIO 临时 ZIP。
+     */
+    public void deleteTempZipQuietly(String objectName) {
+        if (objectName == null || objectName.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build()
+            );
+            log.info("已删除异常临时 ZIP：{}", objectName);
+        } catch (Exception e) {
+            log.warn("删除异常临时 ZIP 失败，objectName={}", objectName, e);
+        }
+    }
 }

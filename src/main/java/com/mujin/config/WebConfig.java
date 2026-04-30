@@ -21,14 +21,13 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(tokenInterceptor)
                 .addPathPatterns("/**")
-                // 放行所有 login, register, 以及静态资源、错误页面等
                 .excludePathPatterns(
-                        "/auth/**",      // 明确放行登录、注册、找回密码接口
-                        "/error",           // 放行错误页面
-                        "/static/**"        // 如果有静态资源
+                        "/auth/**",          // 登录、注册、验证码等接口
+                        "/share/public/**",  // 公开分享接口，无需登录
+                        "/error",
+                        "/static/**"
                 );
     }
-
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {

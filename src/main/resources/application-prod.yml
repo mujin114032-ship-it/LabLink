@@ -41,3 +41,6 @@ pagehelper:
 lablink:
   captcha:
     enabled: true
+  # 批量下载配置
+  batch-download:
+    clean-expire-minutes: 30
