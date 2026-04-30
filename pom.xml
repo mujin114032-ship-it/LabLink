@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.mujin</groupId>
     <artifactId>LabLink</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.3-SNAPSHOT</version>
     <name>LabLink</name>
     <description>LabLink</description>
     <url/>
@@ -62,6 +62,11 @@
             <artifactId>mybatis-spring-boot-starter-test</artifactId>
             <version>4.0.1</version>
             <scope>test</scope>
+        </dependency>
+        <!-- Spring AOP / AspectJ：用于操作日志和限流切面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
         </dependency>
         <!--jwt令牌依赖-->
         <dependency>

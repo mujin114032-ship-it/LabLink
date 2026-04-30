@@ -1,5 +1,8 @@
 package com.mujin.controller;
 
+import com.mujin.annotation.OperationLog;
+import com.mujin.annotation.RateLimit;
+import com.mujin.annotation.RateLimitType;
 import com.mujin.domain.dto.*;
 import com.mujin.domain.vo.FileDownloadUrlVO;
 import com.mujin.domain.vo.FileVerifyVO;
@@ -49,6 +52,7 @@ public class FileController {
     /**
      * 上传文件
      */
+    @OperationLog(module = "文件管理", type = "UPLOAD_FILE", desc = "小文件上传")
     @PostMapping("/upload")
     public Result<Map<String, String>> uploadFile(
             @RequestParam("file") MultipartFile file,
@@ -116,6 +120,8 @@ public class FileController {
     /**
      * 获取文件预签名下载链接
      */
+    @RateLimit(key = "files:download-url", type = RateLimitType.USER, limit = 60, windowSeconds = 60)
+    @OperationLog(module = "文件管理", type = "DOWNLOAD_URL", desc = "获取预签名下载链接")
     @GetMapping("/download-url")
     public Result<FileDownloadUrlVO> getDownloadUrl(
             @RequestParam("id") String id,
@@ -134,6 +140,8 @@ public class FileController {
     /**
      * 批量移动文件/文件夹
      */
+    @RateLimit(key = "files:move", type = RateLimitType.USER, limit = 30, windowSeconds = 60)
+    @OperationLog(module = "文件管理", type = "MOVE", desc = "移动文件或文件夹")
     @PostMapping("/move")
     public Result<Void> moveFiles(@RequestBody FileMoveDTO dto, HttpServletRequest request) {
         // 1. 获取当前用户 ID 和 角色
@@ -149,6 +157,8 @@ public class FileController {
     /**
      * 批量删除文件/文件夹 (移入回收站)
      */
+    @RateLimit(key = "files:delete", type = RateLimitType.USER, limit = 30, windowSeconds = 60)
+    @OperationLog(module = "文件管理", type = "DELETE", desc = "删除文件或文件夹")
     @PostMapping("/delete")
     public Result<Void> deleteFiles(@RequestBody RecycleOperationDTO dto, HttpServletRequest request) {
         // 1. 获取当前用户 ID 和 角色
@@ -164,6 +174,8 @@ public class FileController {
     /**
      * 分享文件
      */
+    @RateLimit(key = "files:share", type = RateLimitType.USER, limit = 30, windowSeconds = 60)
+    @OperationLog(module = "文件管理", type = "SHARE", desc = "生成分享链接")
     @PostMapping("/share")
     public Result<ShareLinkVO> shareFiles(@RequestBody FileShareDTO dto, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
@@ -176,6 +188,7 @@ public class FileController {
      * 上传单个分片
      * 注意：这里使用的是表单提交 (multipart/form-data)，所以不要加 @RequestBody
      */
+    @RateLimit(key = "files:chunk", type = RateLimitType.USER, limit = 240, windowSeconds = 60)
     @PostMapping("/chunk")
     public Result<Void> uploadChunk(ChunkUploadDTO dto) {
         fileService.uploadChunk(dto);
@@ -185,6 +198,8 @@ public class FileController {
     /**
      * 合并分片
      */
+    @RateLimit(key = "files:merge", type = RateLimitType.USER, limit = 30, windowSeconds = 60)
+    @OperationLog(module = "文件管理", type = "MERGE_CHUNKS", desc = "大文件分片合并")
     @PostMapping("/merge")
     public Result<String> mergeChunks(@RequestBody FileMergeDTO dto, HttpServletRequest request) {
         // 从拦截器获取userId
@@ -199,6 +214,7 @@ public class FileController {
     /**
      * 极速预检 (秒传与断点续传)
      */
+    @RateLimit(key = "files:verify", type = RateLimitType.USER, limit = 60, windowSeconds = 60)
     @PostMapping("/verify")
     public Result<FileVerifyVO> verifyFile(@RequestBody FileVerifyDTO dto, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
@@ -206,15 +222,5 @@ public class FileController {
 
         return Result.success(result.getMessage(), result);
     }
-//    @PostMapping("/verify")
-//    public Result<FileVerifyVO> verifyFile(@RequestBody FileVerifyDTO dto, HttpServletRequest request) {
-//        Long userId = (Long) request.getAttribute("userId");
-//        FileVerifyVO result = fileService.verifyFile(dto, userId);
-//
-//        if (!result.getShouldUpload()) {
-//            return Result.success("极速秒传成功", result);
-//        }
-//        return Result.success("需上传分片", result);
-//    }
 
 }

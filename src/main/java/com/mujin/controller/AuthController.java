@@ -1,6 +1,8 @@
 package com.mujin.controller;
 
 import com.google.code.kaptcha.Producer;
+import com.mujin.annotation.RateLimit;
+import com.mujin.annotation.RateLimitType;
 import com.mujin.domain.dto.AuthLoginDTO;
 import com.mujin.domain.dto.AuthRegisterDTO;
 import com.mujin.domain.dto.AuthResetPwdDTO;
@@ -36,6 +38,8 @@ public class AuthController {
     /**
      * 获取图形验证码
      */
+    @RateLimit(key = "auth:captcha", type = RateLimitType.IP, limit = 20, windowSeconds = 60,
+            message = "验证码获取过于频繁，请稍后再试")
     @GetMapping("/captcha")
     public Result<Map<String, String>> getCaptcha() {
         String capText = kaptchaProducer.createText();
@@ -63,6 +67,8 @@ public class AuthController {
     /**
      * 用户登录
      */
+    @RateLimit(key = "auth:login", type = RateLimitType.IP, limit = 10, windowSeconds = 60,
+            message = "登录尝试过于频繁，请稍后再试")
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody AuthLoginDTO dto) {
         Map<String, Object> data = authService.login(dto);
