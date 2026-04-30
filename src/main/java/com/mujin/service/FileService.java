@@ -1,6 +1,7 @@
 package com.mujin.service;
 
 import com.mujin.domain.dto.*;
+import com.mujin.domain.vo.FileDownloadUrlVO;
 import com.mujin.domain.vo.FileVerifyVO;
 import com.mujin.domain.vo.ShareLinkVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +22,8 @@ public interface FileService {
     void rename(FileRenameDTO dto, Long userId);
 
     void download(String id, Long userId, String role, HttpServletResponse response);
+
+    FileDownloadUrlVO getDownloadUrl(String id, Long userId, String role);
 
     void moveFiles(FileMoveDTO dto, Long userId, String role);
 

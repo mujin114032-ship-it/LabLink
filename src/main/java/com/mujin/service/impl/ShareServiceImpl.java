@@ -9,6 +9,7 @@ import com.mujin.domain.vo.ShareVO;
 import com.mujin.mapper.FileMapper;
 import com.mujin.mapper.ShareMapper;
 import com.mujin.service.ShareService;
+import com.mujin.service.support.StorageQuotaSupport;
 import io.minio.MinioClient;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,8 @@ public class ShareServiceImpl implements ShareService {
     private FileMapper fileMapper;
     @Autowired
     private MinioClient minioClient;
+    @Autowired
+    private StorageQuotaSupport storageQuotaSupport;
     @Value("${minio.bucketName}")
     private String bucketName;
 
@@ -84,7 +87,7 @@ public class ShareServiceImpl implements ShareService {
         // 转存的人也要占网盘容量！
         if ("0".equals(originFile.getIsDir())) {
             SysFile physicalFile = fileMapper.selectSysFileById(originFile.getFileId());
-            fileMapper.increaseUsedStorage(userId, physicalFile.getFileSize());
+            storageQuotaSupport.deductOrThrow(userId, physicalFile.getFileSize());
         }
 
         log.info("用户 {} 转存了分享文件 {}, 逻辑ID为 {}", userId, originFile.getFileName(), newFile.getId());

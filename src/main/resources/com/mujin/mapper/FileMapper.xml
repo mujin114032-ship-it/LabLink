@@ -10,6 +10,13 @@
         WHERE id = #{userId}
     </update>
 
+    <update id="tryIncreaseUsedStorage">
+        UPDATE sys_user
+        SET used_storage = used_storage + #{size}
+        WHERE id = #{userId}
+          AND used_storage + #{size} &lt;= total_storage
+    </update>
+
     <update id="updateFileName">
         UPDATE sys_user_file
         SET file_name = #{newName},

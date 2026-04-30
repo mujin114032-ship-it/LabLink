@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class SysFile {
     private Long id;                  // 物理主键ID
-    private String fileIdentifier;    // 文件MD5指纹 (全网唯一)
+    private String fileIdentifier;    // 文件的 SHA-256 指纹
     private Long fileSize;            // 文件大小
     private String filePath;          // MinIO真实存储路径
     private LocalDateTime createTime; // 创建时间

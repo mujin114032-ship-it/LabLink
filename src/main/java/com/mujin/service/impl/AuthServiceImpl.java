@@ -5,11 +5,13 @@ import com.mujin.domain.dto.AuthRegisterDTO;
 import com.mujin.domain.dto.AuthResetPwdDTO;
 import com.mujin.domain.dto.AuthVerifyDTO;
 import com.mujin.domain.entity.SysUser;
+import com.mujin.domain.vo.Result;
 import com.mujin.mapper.UserMapper;
 import com.mujin.service.AuthService;
 import com.mujin.utils.JwtUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +30,20 @@ public class AuthServiceImpl implements AuthService {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Value("${lablink.captcha.enabled:true}")
+    private boolean captchaEnabled;
     /**
      * 校验图形验证码
      * @param uuid 验证码唯一标识
      * @param code 验证码内容
      */
     private void checkCaptcha(String uuid, String code) {
+        // 开发环境关闭验证码校验，方便 Apifox / Postman 调试
+        if (!captchaEnabled) {
+            log.info("验证码校验已关闭，无需校验");
+            return;
+        }
+
         if (uuid == null || code == null) {
             throw new RuntimeException("验证码参数缺失");
         }

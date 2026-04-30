@@ -30,8 +30,11 @@ public interface FileMapper {
     // 查询逻辑网盘表文件信息
     List<FileVO> selectFileList(FileQueryDTO fileQueryDTO);
 
-    // 用户上传文件后，增加用户空间占用
-    void increaseUsedStorage(@Param("userId") Long userId, @Param("size") Long size);
+    // 用户上传文件后，增加用户空间占用(旧版不使用)
+    // void increaseUsedStorage(@Param("userId") Long userId, @Param("size") Long size);
+
+    // 尝试增加用户空间占用
+    int tryIncreaseUsedStorage(@Param("userId") Long userId, @Param("size") Long size);
 
     // 重命名文件
     int updateFileName(@Param("id") Long id, @Param("newName") String newName, @Param("userId") Long userId);

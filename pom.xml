@@ -91,6 +91,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <!-- Redisson 分布式锁 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>4.3.1</version>
+        </dependency>
         <!-- 分页依赖 -->
         <dependency>
             <groupId>com.github.pagehelper</groupId>
@@ -98,10 +104,6 @@
             <version>2.1.0</version>
         </dependency>
         <!-- 登录验证依赖 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
         <dependency>
             <groupId>pro.fessional</groupId>
             <artifactId>kaptcha</artifactId>

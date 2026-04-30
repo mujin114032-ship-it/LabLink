@@ -1,6 +1,7 @@
 package com.mujin.controller;
 
 import com.mujin.domain.dto.*;
+import com.mujin.domain.vo.FileDownloadUrlVO;
 import com.mujin.domain.vo.FileVerifyVO;
 import com.mujin.domain.vo.Result;
 import com.mujin.domain.vo.ShareLinkVO;
@@ -113,6 +114,24 @@ public class FileController {
     }
 
     /**
+     * 获取文件预签名下载链接
+     */
+    @GetMapping("/download-url")
+    public Result<FileDownloadUrlVO> getDownloadUrl(
+            @RequestParam("id") String id,
+            HttpServletRequest request) {
+
+        // 1. 获取当前用户 ID 和角色
+        Long userId = (Long) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+
+        // 2. 生成预签名下载链接
+        FileDownloadUrlVO vo = fileService.getDownloadUrl(id, userId, role);
+
+        return Result.success("获取下载链接成功", vo);
+    }
+
+    /**
      * 批量移动文件/文件夹
      */
     @PostMapping("/move")
@@ -185,10 +204,17 @@ public class FileController {
         Long userId = (Long) request.getAttribute("userId");
         FileVerifyVO result = fileService.verifyFile(dto, userId);
 
-        if (!result.getShouldUpload()) {
-            return Result.success("极速秒传成功", result);
-        }
-        return Result.success("需上传分片", result);
+        return Result.success(result.getMessage(), result);
     }
+//    @PostMapping("/verify")
+//    public Result<FileVerifyVO> verifyFile(@RequestBody FileVerifyDTO dto, HttpServletRequest request) {
+//        Long userId = (Long) request.getAttribute("userId");
+//        FileVerifyVO result = fileService.verifyFile(dto, userId);
+//
+//        if (!result.getShouldUpload()) {
+//            return Result.success("极速秒传成功", result);
+//        }
+//        return Result.success("需上传分片", result);
+//    }
 
 }

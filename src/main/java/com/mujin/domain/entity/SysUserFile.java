@@ -15,6 +15,7 @@ public class SysUserFile {
     private String parentId;          // 标记父目录（默认为root）
     private String fileName;          // 用户个人的文件名
     private String isDir;             // 是否为文件夹（0：否，1：是）
+    private Integer isDeleted;        // 是否删除（0：否，1：是）
     private LocalDateTime createTime; // 创建时间
     private LocalDateTime updateTime; // 更新时间
 

@@ -12,11 +12,17 @@ spring:
       host: 127.0.0.1
       port: 6379
       database: 0
+      timeout: 10s
+      connect-timeout: 5s
 
   servlet:
     multipart:
       max-file-size: 30MB
       max-request-size: 50MB
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
 
 # MinIO 配置
 minio:
@@ -30,3 +36,8 @@ pagehelper:
   reasonable: true
   support-methods-arguments: true
   params: count=countSql
+
+# 验证码配置
+lablink:
+  captcha:
+    enabled: true

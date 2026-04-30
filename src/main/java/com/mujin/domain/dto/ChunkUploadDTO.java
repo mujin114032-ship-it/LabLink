@@ -9,14 +9,21 @@ import org.springframework.web.multipart.MultipartFile;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChunkUploadDTO {
-    // 文件的唯一标识
+    // 文件的唯一标识，也就是文件 SHA-256
     private String identifier;
+
     // 文件的原始名称
     private String filename;
-    // 当前分片的索引（从 1 开始）
+
+    // 当前分片的索引，从 1 开始
     private Integer chunkNumber;
+
     // 总分片数
     private Integer totalChunks;
+
     // 当前分片的二进制文件数据
     private MultipartFile file;
+
+    // 上传会话 ID，由 /files/verify 返回
+    private String uploadSessionId;
 }
