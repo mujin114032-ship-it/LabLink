@@ -21,12 +21,14 @@ public class JwtUtils {
     /**
      * 生成 Token
      * @param userId 用户的数据库 ID
+     * @param username 用户的用户名
      * @param role   用户的角色 (ADMIN/MENTOR/STUDENT)
      * @return jwt 字符串
      */
-    public static String createToken(Long userId, String role) {
+    public static String createToken(Long userId, String username, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
+        claims.put("username", username);
         claims.put("role", role);
 
         return Jwts.builder()
@@ -34,6 +36,13 @@ public class JwtUtils {
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRE_TIME)) // 设置过期时间
                 .signWith(SignatureAlgorithm.HS512, SECRET_KEY) // 签名算法和密钥
                 .compact();
+    }
+
+    /**
+     * 兼容旧调用。
+     */
+    public static String createToken(Long userId, String role) {
+        return createToken(userId, String.valueOf(userId), role);
     }
 
     /**

@@ -15,6 +15,7 @@ import com.mujin.mapper.FileMapper;
 import com.mujin.mapper.ShareMapper;
 import com.mujin.mapper.UserMapper;
 import com.mujin.service.FileService;
+import com.mujin.service.support.CloudMindSyncSupport;
 import com.mujin.service.support.MinioFileSupport;
 import com.mujin.service.support.StorageQuotaSupport;
 import com.mujin.service.support.UploadRedisSupport;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -61,6 +63,10 @@ public class FileServiceImpl implements FileService {
     private MinioClient minioClient;
 
     @Autowired
+    @Qualifier("minioPublicClient")
+    private MinioClient minioPublicClient;
+
+    @Autowired
     private RedissonClient redissonClient;
 
     @Autowired
@@ -81,11 +87,20 @@ public class FileServiceImpl implements FileService {
     @Autowired
     private StorageQuotaSupport storageQuotaSupport;
 
+    @Autowired
+    private CloudMindSyncSupport cloudMindSyncSupport;
+
     @Value("${lablink.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
     @Value("${lablink.backend-url:http://localhost:8080}")
     private String backendUrl;
+
+    @Value("${minio.endpoint}")
+    private String minioEndpoint;
+
+    @Value("${minio.public-endpoint:${minio.endpoint}}")
+    private String minioPublicEndpoint;
 
     @Value("${minio.bucketName}")
     private String bucketName;
@@ -156,11 +171,13 @@ public class FileServiceImpl implements FileService {
 
             // ================= 3. 物理文件查重与上传 =================
             SysFile physicalFile = fileMapper.selectSysFileByIdentifier(identifier);
+            SysFile syncPhysicalFile;
             Long physicalFileId;
 
             if (physicalFile != null) {
                 // 触发秒传：数据库里已经有这个物理文件了，直接复用 ID
                 physicalFileId = physicalFile.getId();
+                syncPhysicalFile = physicalFile;
             } else {
                 // 真实上传：存入 MinIO
                 String originalName = file.getOriginalFilename();
@@ -182,9 +199,10 @@ public class FileServiceImpl implements FileService {
                 newSysFile.setFileIdentifier(identifier);
                 newSysFile.setFileSize(fileSize);
                 newSysFile.setFilePath(objectName);
-                fileMapper.insertSysFile(newSysFile); // 插入后 MyBatis 需回填自增 ID
+                fileMapper.insertSysFile(newSysFile);
 
                 physicalFileId = newSysFile.getId();
+                syncPhysicalFile = newSysFile;
             }
 
             // ================= 4. 建立逻辑关联 =================
@@ -205,6 +223,9 @@ public class FileServiceImpl implements FileService {
             // ================= 5. 扣减用户网盘容量 =================
             // 使用 Redisson 用户锁 + MySQL 条件更新，避免并发超扣容量
             storageQuotaSupport.deductOrThrow(userId, fileSize);
+
+            // LabLink -> CloudMind：上传成功后同步文字类文件到用户私有知识库
+            cloudMindSyncSupport.syncFileAfterCommit(userFile, syncPhysicalFile);
 
             return logicFileId;
 
@@ -365,7 +386,7 @@ public class FileServiceImpl implements FileService {
             // 6. 生成 5 分钟有效的预签名 URL
             int expireSeconds = 5 * 60;
 
-            String url = minioClient.getPresignedObjectUrl(
+            String url = minioPublicClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
@@ -508,7 +529,7 @@ public class FileServiceImpl implements FileService {
                     "attachment; filename*=UTF-8''" + encodedFileName
             );
 
-            String url = minioClient.getPresignedObjectUrl(
+            String url = minioPublicClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
@@ -637,8 +658,9 @@ public class FileServiceImpl implements FileService {
             throw new RuntimeException("删除失败：文件不存在或无权操作");
         }
 
-        List<Long> allNumericIds = new ArrayList<>();   // 存放最终要判死刑的所有 ID
+        List<Long> allNumericIds = new ArrayList<>();   // 存放最终要真删除的所有 ID
         Queue<String> folderQueue = new LinkedList<>(); // 只有文件夹才有资格进队列！
+        List<SysUserFile> allItemsToDelete = new ArrayList<>();
 
         int fileCount = 0;
         int folderCount = 0;
@@ -646,11 +668,13 @@ public class FileServiceImpl implements FileService {
         // 智能分拣
         for (SysUserFile item : topLevelItems) {
             allNumericIds.add(item.getId());
+            allItemsToDelete.add(item);
+
             if ("1".equals(item.getIsDir())) {
-                folderQueue.add("f_" + item.getId()); // 是文件夹，进队列等候
+                folderQueue.add("f_" + item.getId());
                 folderCount++;
             } else {
-                fileCount++; // 是文件，直接拉黑
+                fileCount++;
             }
         }
 
@@ -664,6 +688,8 @@ public class FileServiceImpl implements FileService {
             if (children != null && !children.isEmpty()) {
                 for (SysUserFile child : children) {
                     allNumericIds.add(child.getId());
+                    allItemsToDelete.add(child);
+
                     if ("1".equals(child.getIsDir())) {
                         folderQueue.add("f_" + child.getId());
                     }
@@ -676,6 +702,11 @@ public class FileServiceImpl implements FileService {
 
         if (rows == 0) {
             throw new RuntimeException("删除失败：更新状态异常");
+        }
+
+        // LabLink -> CloudMind：文件移入回收站后，从私有知识库中逻辑删除
+        for (SysUserFile item : allItemsToDelete) {
+            cloudMindSyncSupport.deleteSyncAfterCommit(item, "lablink_recycle");
         }
 
         // 日志反馈
@@ -766,6 +797,9 @@ public class FileServiceImpl implements FileService {
             fileMapper.insertSysUserFile(userFile);
             // 秒传也要占用当前用户的个人网盘容量，必须走原子扣减
             storageQuotaSupport.deductOrThrow(userId, physicalFile.getFileSize());
+
+            // LabLink -> CloudMind：秒传成功后同步文字类文件
+            cloudMindSyncSupport.syncFileAfterCommit(userFile, physicalFile);
 
             log.info("用户 {} 触发文件秒传，identifier={}, logicId={}",
                     userId, identifier, userFile.getId());
@@ -960,6 +994,8 @@ public class FileServiceImpl implements FileService {
 
         storageQuotaSupport.deductOrThrow(userId, physicalFile.getFileSize());
 
+        cloudMindSyncSupport.syncFileAfterCommit(userFile, physicalFile);
+
         log.info("用户 {} 复用已存在物理文件，identifier={}, logicId={}",
                 userId, dto.getIdentifier(), userFile.getId());
 
@@ -1139,6 +1175,9 @@ public class FileServiceImpl implements FileService {
             // ================= 11. 扣减用户网盘容量 =================
             // 通过用户维度分布式锁 + MySQL 条件更新，保证容量扣减原子性
             storageQuotaSupport.deductOrThrow(userId, actualFileSize);
+
+            // LabLink -> CloudMind：大文件合并成功后同步文字类文件
+            cloudMindSyncSupport.syncFileAfterCommit(userFile, physicalFile);
 
             // ================= 12. 合并成功后清理 MinIO 临时分片和 Redis 上传状态 =================
             minioFileSupport.deleteTempChunks(identifier, dto.getTotalChunks());

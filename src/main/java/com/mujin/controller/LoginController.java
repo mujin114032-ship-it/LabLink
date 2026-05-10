@@ -34,7 +34,7 @@ public class LoginController{
             SysUser user = userService.login(userLoginDTO);
 
             // 生成 JWT 令牌
-            String token = JwtUtils.createToken(user.getId(), user.getRole());
+            String token = JwtUtils.createToken(user.getId(), user.getUsername(), user.getRole());
 
             // 构建返回数据
             Map<String, Object> data = new HashMap<>();

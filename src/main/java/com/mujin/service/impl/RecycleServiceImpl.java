@@ -9,6 +9,7 @@ import com.mujin.domain.vo.RecycleVO;
 import com.mujin.mapper.FileMapper;
 import com.mujin.mapper.ShareMapper;
 import com.mujin.service.RecycleService;
+import com.mujin.service.support.CloudMindSyncSupport;
 import io.minio.MinioClient;
 import io.minio.RemoveObjectArgs;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,9 @@ public class RecycleServiceImpl implements RecycleService {
 
     @Autowired
     private ShareMapper shareMapper;
+
+    @Autowired
+    private CloudMindSyncSupport cloudMindSyncSupport;
 
     @Value("${minio.bucketName}")
     private String bucketName;
@@ -58,13 +62,47 @@ public class RecycleServiceImpl implements RecycleService {
      * @param ids
      * @param userId
      */
+//    @Transactional(rollbackFor = Exception.class)
+//    @Override
+//    public void restoreFiles(List<String> ids, Long userId) {
+//        List<Long> numericIds = parseIds(ids);
+//        if (numericIds.isEmpty()) return;
+//        // 还原就是把 is_deleted 改回 0
+//        fileMapper.updateFileStatus(numericIds, userId, 0);
+//    }
     @Transactional(rollbackFor = Exception.class)
     @Override
     public void restoreFiles(List<String> ids, Long userId) {
         List<Long> numericIds = parseIds(ids);
-        if (numericIds.isEmpty()) return;
-        // 还原就是把 is_deleted 改回 0
-        fileMapper.updateFileStatus(numericIds, userId, 0);
+        if (numericIds.isEmpty()) {
+            return;
+        }
+
+        // 先查出要恢复的文件，后面用于 CloudMind 重新同步
+        List<SysUserFile> userFiles = fileMapper.selectUserFilesByIds(numericIds, userId);
+
+        int rows = fileMapper.updateFileStatus(numericIds, userId, 0);
+
+        if (rows == 0) {
+            throw new RuntimeException("还原失败：文件不存在或无权操作");
+        }
+
+        // 恢复后重新同步到 CloudMind 私有知识库
+        for (SysUserFile userFile : userFiles) {
+            if ("1".equals(userFile.getIsDir())) {
+                continue;
+            }
+
+            if (userFile.getFileId() == null || userFile.getFileId() == 0) {
+                continue;
+            }
+
+            SysFile physicalFile = fileMapper.selectSysFileById(userFile.getFileId());
+
+            if (physicalFile != null) {
+                cloudMindSyncSupport.syncFileAfterCommit(userFile, physicalFile);
+            }
+        }
     }
 
     /**
@@ -83,6 +121,8 @@ public class RecycleServiceImpl implements RecycleService {
 
         for (SysUserFile userFile : userFiles) {
 
+            // CloudMind 删除同步幂等补偿
+            cloudMindSyncSupport.deleteSyncAfterCommit(userFile, "lablink_hard_delete");
             // 撤回该文件在共享空间的所有分享记录
             shareMapper.deleteShareByFileId(userFile.getId());
             // 2. 从逻辑表物理删除

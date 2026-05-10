@@ -195,7 +195,14 @@
     </select>
 
     <select id="selectUserFilesByIds" resultType="com.mujin.domain.entity.SysUserFile">
-        SELECT id, user_id as userId, file_id as fileId, is_dir as isDir
+        SELECT
+        id,
+        user_id AS userId,
+        file_id AS fileId,
+        parent_id AS parentId,
+        file_name AS fileName,
+        is_dir AS isDir,
+        is_deleted AS isDeleted
         FROM sys_user_file
         <where>
             <if test="userId != null">
@@ -215,9 +222,12 @@
     <select id="selectFilesByParentIds" resultType="com.mujin.domain.entity.SysUserFile">
         SELECT
         id,
-        file_id as fileId,
-        is_dir as isDir,
-        parent_id as parentId
+        user_id AS userId,
+        file_id AS fileId,
+        parent_id AS parentId,
+        file_name AS fileName,
+        is_dir AS isDir,
+        is_deleted AS isDeleted
         FROM sys_user_file
         WHERE is_deleted = #{isDeleted}
         AND parent_id IN

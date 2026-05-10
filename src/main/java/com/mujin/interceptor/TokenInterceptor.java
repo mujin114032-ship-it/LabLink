@@ -47,7 +47,16 @@ public class TokenInterceptor implements HandlerInterceptor{
             String role = claims.get("role").toString();
             request.setAttribute("role", role);
 
-            log.info("Token 验证通过，用户 ID: {}, 权限: {}", userId, role);
+            Object usernameObj = claims.get("username");
+            if (usernameObj == null) {
+                usernameObj = claims.get("userName");
+            }
+
+            String username = usernameObj == null ? String.valueOf(userId) : usernameObj.toString();
+            request.setAttribute("username", username);
+
+            log.info("Token 验证通过，用户 ID: {}, 用户名: {}, 权限: {}", userId, username, role);
+
         } catch (Exception e) {
             log.error("token无效,返回401错误", e);
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

@@ -19,6 +19,7 @@ import io.minio.http.Method;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,9 +49,19 @@ public class ShareServiceImpl implements ShareService {
     @Autowired
     private MinioClient minioClient;
     @Autowired
+    @Qualifier("minioPublicClient")
+    private MinioClient minioPublicClient;
+    @Autowired
     private StorageQuotaSupport storageQuotaSupport;
     @Autowired
     private MinioFileSupport minioFileSupport;
+
+    @Value("${minio.endpoint}")
+    private String minioEndpoint;
+
+    @Value("${minio.public-endpoint:${minio.endpoint}}")
+    private String minioPublicEndpoint;
+
     @Value("${minio.bucketName}")
     private String bucketName;
 
@@ -256,7 +267,7 @@ public class ShareServiceImpl implements ShareService {
             );
 
             // 5. 签发预签名 URL
-            String url = minioClient.getPresignedObjectUrl(
+            String url = minioPublicClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
@@ -425,7 +436,7 @@ public class ShareServiceImpl implements ShareService {
                     "attachment; filename*=UTF-8''" + encodedFileName
             );
 
-            return minioClient.getPresignedObjectUrl(
+            return minioPublicClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
@@ -524,7 +535,7 @@ public class ShareServiceImpl implements ShareService {
                     "attachment; filename*=UTF-8''" + encodedFileName
             );
 
-            return minioClient.getPresignedObjectUrl(
+            return minioPublicClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucketName)
